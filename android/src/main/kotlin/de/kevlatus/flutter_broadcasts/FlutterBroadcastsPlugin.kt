@@ -13,6 +13,8 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import java.io.Serializable
+import android.os.Build
+import android.content.BroadcastOptions.RECEIVER_NOT_EXPORTED
 
 class CustomBroadcastReceiver(
         val id: Int,
