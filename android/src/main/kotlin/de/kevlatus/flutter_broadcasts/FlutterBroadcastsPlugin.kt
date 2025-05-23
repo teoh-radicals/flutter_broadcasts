@@ -15,12 +15,12 @@ import io.flutter.plugin.common.MethodChannel.Result
 import java.io.Serializable
 import android.os.Build
 
-private const val RECEIVER_NOT_EXPORTED_FLAG = 0x2 // Android 14+ constant for receiver registration
+private const val RECEIVER_NOT_EXPORTED_FLAG = 0x2
 
 class CustomBroadcastReceiver(
-    val id: Int,
-    private val names: List<String>,
-    private val listener: (Any) -> Unit
+        val id: Int,
+        private val names: List<String>,
+        private val listener: (Any) -> Unit
 ) : BroadcastReceiver() {
     companion object {
         const val TAG: String = "CustomBroadcastReceiver"
@@ -33,36 +33,34 @@ class CustomBroadcastReceiver(
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {
-        Log.d(TAG, "received intent ${intent?.action}")
+        Log.d(TAG, "received intent " + intent?.action)
         intent?.let {
             val bundle = it.extras
             val dataPairs = bundle?.keySet()?.map { key ->
                 Pair(key, bundle.get(key))
             }
             val data = dataPairs?.toMap() ?: mapOf()
-            listener(
-                mapOf(
+            listener(mapOf(
                     "receiverId" to id,
                     "name" to it.action!!,
                     "data" to normalize(data)
-                )
-            )
+            ))
         }
     }
 
     fun start(context: Context) {
-        if (Build.VERSION.SDK_INT >= 34) {
-            context.registerReceiver(this, intentFilter, RECEIVER_NOT_EXPORTED_FLAG)
-        } else {
-            context.registerReceiver(this, intentFilter)
-        }
-
-        Log.d(TAG, "starting to listen for broadcasts: ${names.joinToString(";")}")
+	if (Build.VERSION.SDK_INT >= 34 ){
+		context.registerReceiver(this, intentFilter, RECEIVER_NOT_EXPORTED_FLAG)
+	}else{
+		context.registerReceiver(this, intentFilter)
+	}
+        
+        Log.d(TAG, "starting to listen for broadcasts: " + names.joinToString(";"))
     }
 
     fun stop(context: Context) {
         context.unregisterReceiver(this)
-        Log.d(TAG, "stopped listening for broadcasts: ${names.joinToString(";")}")
+        Log.d(TAG, "stopped listening for broadcasts: " + names.joinToString(";"))
     }
 }
 
@@ -74,13 +72,15 @@ class BroadcastManager(private val applicationContext: Context) {
     private var receivers: Map<Int, CustomBroadcastReceiver> = mapOf()
 
     fun startReceiver(receiver: CustomBroadcastReceiver) {
-        Log.d(TAG, "starting receiver ${receiver.id}")
+        Log.d(TAG, "starting receiver " + receiver.id.toString())
+        // TODO: handle case when receiver exists
         receiver.start(applicationContext)
         receivers = receivers + Pair(receiver.id, receiver)
     }
 
     fun stopReceiver(id: Int) {
         Log.d(TAG, "stopping receiver $id")
+        // TODO: handle non-existing case
         receivers[id]?.stop(applicationContext)
         receivers = receivers.filter { it.key != id }
     }
@@ -91,8 +91,8 @@ class BroadcastManager(private val applicationContext: Context) {
 }
 
 class MethodCallHandlerImpl(
-    private val context: Context,
-    private val broadcastManager: BroadcastManager
+        private val context: Context,
+        private val broadcastManager: BroadcastManager
 ) : MethodCallHandler {
     companion object {
         const val TAG: String = "MethodCallHandlerImpl"
@@ -101,25 +101,27 @@ class MethodCallHandlerImpl(
     private var channel: MethodChannel? = null
 
     private fun withReceiverArgs(
-        call: MethodCall,
-        result: Result,
-        func: (id: Int, names: List<String>) -> Unit
+            call: MethodCall,
+            result: Result,
+            func: (id: Int, names: List<String>) -> Unit
     ) {
         val id = call.argument<Int>("id")
-            ?: return result.error("1", "no receiver id provided", null)
+                ?: return result.error("1", "no receiver id provided", null)
+
         val names = call.argument<List<String>>("names")
-            ?: return result.error("1", "no names provided", null)
+                ?: return result.error("1", "no names provided", null)
+
         func(id, names)
     }
 
     private fun withBroadcastArgs(
-        call: MethodCall,
-        result: Result,
-        func: (name: String, data: Map<String, Any>) -> Unit
+            call: MethodCall,
+            result: Result,
+            func: (name: String, data: Map<String, Any>) -> Unit
     ) {
         val name = call.argument<String>("name")
-            ?: return result.error("1", "no broadcast name provided", null)
-        val data = call.argument<Map<String, Any>>() ?: mapOf()
+                ?: return result.error("1", "no broadcast name provided", null)
+        val data = call.argument<Map<String, Any>>("data") ?: mapOf()
         func(name, data)
     }
 
@@ -149,17 +151,21 @@ class MethodCallHandlerImpl(
                 context.sendBroadcast(intent)
                 Log.d(TAG, "sent broadcast: $name")
             }
-            result.success(null)
         }
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
-        Log.d(TAG, "received method call ${call.method}")
+        Log.d(TAG, "received method call " + call.method)
         when (call.method) {
-            "startReceiver" -> onStartReceiver(call, result)
-            "stopReceiver" -> onStopReceiver(call, result)
-            "sendBroadcast" -> onSendBroadcast(call, result)
-            else -> result.notImplemented()
+            "startReceiver" -> {
+                onStartReceiver(call, result)
+            }
+            "stopReceiver" -> {
+                onStopReceiver(call, result)
+            }
+            "sendBroadcast" -> {
+                onSendBroadcast(call, result)
+            }
         }
     }
 
@@ -195,8 +201,8 @@ class FlutterBroadcastsPlugin : FlutterPlugin {
     override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         broadcastManager = BroadcastManager(flutterPluginBinding.applicationContext)
         methodCallHandler = MethodCallHandlerImpl(
-            flutterPluginBinding.applicationContext,
-            broadcastManager!!
+                flutterPluginBinding.applicationContext,
+                broadcastManager!!
         )
         methodCallHandler!!.startListening(flutterPluginBinding.binaryMessenger)
     }
@@ -210,37 +216,57 @@ class FlutterBroadcastsPlugin : FlutterPlugin {
         methodCallHandler = null
         broadcastManager?.stopAll()
         broadcastManager = null
+    }    
+}
+
+/***
+ * Normalize the intent data to types that Flutter's StandardMessageCodec can pass.
+ *
+ * Flutter's StandardMessageCodec is the mechanism used for passing intent contents to the Flutter
+ * layer. As only specific types are supported by it, other types are normalized to their String
+ * representation.
+ *
+ * This code should be updated when Flutter Engine's code supports additional types.
+ * See https://github.com/flutter/engine/blob/main/shell/platform/android/io/flutter/plugin/common/StandardMessageCodec.java
+ */
+private fun normalize(x: Any?) : Any? {
+	if (
+        x == null 
+        || x.equals(null)
+        || x is Boolean
+        || x is Int
+        || x is Short
+        || x is Byte
+        || x is Long
+        || x is Float
+        || x is Double
+        || x is java.math.BigInteger
+        || x is CharSequence
+        || x is ByteArray
+        || x is IntArray
+        || x is LongArray
+        || x is DoubleArray
+        || x is FloatArray
+    ) {
+    	return x
+    } else if (x is List<*>) {
+        return normalizeList(x)
+    } else if (x is Map<*, *>) {
+    	return normalizeMap(x)
+    } else {
+        return x.toString()
     }
 }
 
-// Helpers to normalize data types for Flutter
-private fun normalize(x: Any?): Any? {
-    return when (x) {
-        null,
-        is Boolean,
-        is Int,
-        is Short,
-        is Byte,
-        is Long,
-        is Float,
-        is Double,
-        is java.math.BigInteger,
-        is CharSequence,
-        is ByteArray,
-        is IntArray,
-        is LongArray,
-        is DoubleArray,
-        is FloatArray -> x
-        is List<*> -> normalizeList(x)
-        is Map<*, *> -> normalizeMap(x)
-        else -> x.toString()
+private fun <V> normalizeList(x: List<V>) : List<Any?> {
+    return x.map { item ->
+    	normalize(item)
     }
 }
 
-private fun <V> normalizeList(x: List<V>): List<Any?> {
-    return x.map { item -> normalize(item) }
-}
-
-private fun <K, V> normalizeMap(x: Map<K, V>): Map<K, Any?> {
-    return x.mapValues { (_, value) -> normalize(value) }
+private fun <K, V> normalizeMap(x: Map<K, V>) : Map<K, Any?> {
+    val pairs = x.keys.map { key ->
+        Pair(key, normalize(x[key]))
+    }
+    return pairs.toMap()
 }
